@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production
+dist/
+build/
+.next/
+out/
+
+# Misc
+.DS_Store
+*.pem
+.env
+.env*.local
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# TypeScript
+*.tsbuildinfo
+
+# OpenSearch data (if running locally)
+opensearch-data/

@@ -1,0 +1,19 @@
+{
+  "name": "opensearch-study",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OpenSearch 학습 프로젝트 - NestJS + Next.js",
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "build": "pnpm -r build",
+    "clean": "pnpm -r clean && rm -rf node_modules"
+  },
+  "keywords": ["opensearch", "nestjs", "nextjs", "monorepo"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
