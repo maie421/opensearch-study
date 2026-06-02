@@ -39,7 +39,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 4. **품절은 컬럼이 아니라 파생값.** `ll_product`에 `is_sold_out` 컬럼은 없다. `product_status === 40`(SOLD_OUT)을 색인 시 `is_sold_out`(boolean)으로 계산한다(`scripts/lib/index-config.mjs`의 `buildDoc`). 검색 기본은 품절 숨김(`filter is_sold_out:false`), `includeSoldOut=true`면 뒤로 정렬(`sort [is_sold_out asc, _score desc]`).
 
-5. **동의어는 "검색 시점에만" 적용.** market_name 필드는 색인용(`korean_index`, 동의어X)·검색용(`korean_search`, 동의어O) 분석기를 분리한다. 동의어 사전(`docker/opensearch/synonyms.txt`)을 바꿔도 재색인 없이 인덱스 reload만으로 반영 가능. 회사 부서가 동의어를 엑셀로 제공 → 변환 스크립트(`scripts/excel-to-synonyms.ts`)는 향후 작성 예정.
+5. **동의어는 "색인 시점에" 적용.** 색인용 분석기 `korean_index`에 `synonym` 필터(`syn_index`)를 넣어 미리 펼쳐 저장하고, 검색용 `korean_search`는 동의어 없이 단순 매칭한다(쿼리 빠름 + synonym_graph clause 폭발 없음). 운영(llink-api)도 같은 이유로 색인 시점 방식(`name_search` 통합텍스트). **트레이드오프: 동의어 사전(`docker/opensearch/synonyms.txt`)을 바꾸면 전량 재색인(blue-green)이 필요**하다(검색 시점 방식이 아니므로 reload만으론 안 됨). 또 색인 시점 동의어는 synonym 토큰이 문서빈도를 늘려 `_score`(IDF)가 달라지는 부작용이 있다. 회사 부서가 동의어를 엑셀로 제공 → 변환 스크립트(`scripts/excel-to-synonyms.ts`)는 향후 작성 예정.
 
 ## 색인 스크립트 규칙 (.mjs)
 

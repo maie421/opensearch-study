@@ -15,22 +15,32 @@ export function loadEnv(metaUrl) {
   }
 }
 
-// 인덱스 분석기 설정 (nori + 검색시점 동의어)
+// 인덱스 분석기 설정 (nori + 색인시점 동의어)
+//
+// 동의어를 "색인 시점"에 적용한다(검색 시점 아님):
+//  - 장점: 검색 쿼리가 단순 → 빠르고 synonym_graph clause 폭발 위험 없음
+//  - 단점: 동의어 사전을 바꾸면 전량 재색인(blue-green) 필요
+//  - 운영(llink-api)도 같은 이유로 색인 시점(name_search 통합텍스트) 방식을 씀
+//
+// 색인 시점 동의어는 synonym_graph 가 아니라 synonym 필터를 쓴다
+// (synonym_graph 는 search analyzer 전용 권장).
 export const analysis = {
   tokenizer: {
     nori_user: { type: 'nori_tokenizer', decompound_mode: 'mixed' },
   },
   filter: {
     ko_pos: { type: 'nori_part_of_speech' },
-    syn_search: {
-      type: 'synonym_graph',
+    syn_index: {
+      type: 'synonym',
       synonyms_path: 'synonyms.txt',
       lenient: true,
     },
   },
   analyzer: {
-    korean_index: { type: 'custom', tokenizer: 'nori_user', filter: ['ko_pos', 'lowercase'] },
-    korean_search: { type: 'custom', tokenizer: 'nori_user', filter: ['ko_pos', 'lowercase', 'syn_search'] },
+    // 색인용: 동의어 O (여기서 미리 펼쳐서 저장)
+    korean_index: { type: 'custom', tokenizer: 'nori_user', filter: ['ko_pos', 'lowercase', 'syn_index'] },
+    // 검색용: 동의어 X (이미 색인에 펼쳐져 있으니 단순 매칭)
+    korean_search: { type: 'custom', tokenizer: 'nori_user', filter: ['ko_pos', 'lowercase'] },
   },
 };
 
