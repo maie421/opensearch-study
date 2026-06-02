@@ -42,6 +42,13 @@ export class OpensearchService implements OnModuleInit {
   }
 
   /**
+   * OpenSearch 클라이언트 반환 (다른 서비스에서 재사용)
+   */
+  getClient(): Client {
+    return this.client;
+  }
+
+  /**
    * OpenSearch 서버 정보 가져오기
    */
   async getInfo() {

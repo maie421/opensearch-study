@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { OpensearchModule } from './opensearch/opensearch.module';
+import { ProductsModule } from './products/products.module';
 
 /**
  * 📦 루트 모듈
@@ -16,7 +18,9 @@ import { OpensearchModule } from './opensearch/opensearch.module';
  */
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true }), // .env 로딩 (전역)
     OpensearchModule, // OpenSearch 관련 기능을 담당하는 모듈
+    ProductsModule, // 상품 유사도 검색
   ],
   controllers: [AppController], // 헬스체크용 컨트롤러
   providers: [AppService],       // 기본 서비스

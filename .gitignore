@@ -36,3 +36,7 @@ pnpm-debug.log*
 
 # OpenSearch data (if running locally)
 opensearch-data/
+
+# 색인 워터마크 (런타임 상태)
+scripts/.watermark.json
+packages/backend/scripts/.watermark.json

@@ -1,0 +1,53 @@
+# OpenSearch 학습용 로컬 환경
+# - opensearch:        검색 엔진 본체 (REST API: http://localhost:9200)
+# - opensearch-dashboards: 웹 UI (http://localhost:5601) — 색인/쿼리를 눈으로 확인
+#
+# 학습 편의를 위해 보안 플러그인(security)을 끈다.
+#  → https/인증 없이 http://localhost:9200 으로 바로 접속 가능 (운영에서는 절대 끄지 말 것)
+
+services:
+  opensearch:
+    build: ./docker/opensearch   # nori 플러그인 포함 커스텀 이미지
+    container_name: opensearch
+    environment:
+      - discovery.type=single-node            # 단일 노드 모드 (학습용)
+      - DISABLE_SECURITY_PLUGIN=true          # 보안 플러그인 비활성화 (http + 무인증)
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"  # 메모리 (로컬이라 작게)
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"   # REST API
+      - "9600:9600"   # 성능 모니터링
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+      # 동의어 사전을 컨테이너 config 디렉터리에 마운트
+      # 분석기에서 synonyms_path: "synonyms.txt" 로 참조한다.
+      - ./docker/opensearch/synonyms.txt:/usr/share/opensearch/config/synonyms.txt:ro
+    networks:
+      - opensearch-net
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.13.0
+    container_name: opensearch-dashboards
+    environment:
+      - 'OPENSEARCH_HOSTS=["http://opensearch:9200"]'
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"   # 웹 UI
+    depends_on:
+      - opensearch
+    networks:
+      - opensearch-net
+
+volumes:
+  opensearch-data:
+
+networks:
+  opensearch-net:
