@@ -22,6 +22,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 전량 재색인(blue-green): `node scripts/reindex-full.mjs [건수|all]` (기본 5000)
 - 증분 색인(워터마크): `node scripts/reindex-incremental.mjs`
 
+**동의어 (packages/backend 에서 실행)**
+- 사전 생성: `node scripts/sheets-to-synonyms.mjs` — Google Sheet → `docker/opensearch/synonyms.txt` (덮어쓰기)
+- 사전 검증: `node scripts/check-synonyms.mjs [--limit N]` — 동의어 도달성 점검(`_analyze`)
+- 검색 품질 회귀: `node scripts/search-smoke.mjs` — `golden-queries.json` 골든셋 검증(하드 실패 시 exit 1)
+
 ## 아키텍처 — 검색 파이프라인
 
 ```
@@ -39,7 +44,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 4. **품절은 컬럼이 아니라 파생값.** `ll_product`에 `is_sold_out` 컬럼은 없다. `product_status === 40`(SOLD_OUT)을 색인 시 `is_sold_out`(boolean)으로 계산한다(`scripts/lib/index-config.mjs`의 `buildDoc`). 검색 기본은 품절 숨김(`filter is_sold_out:false`), `includeSoldOut=true`면 뒤로 정렬(`sort [is_sold_out asc, _score desc]`).
 
-5. **동의어는 "색인 시점에" 적용.** 색인용 분석기 `korean_index`에 `synonym` 필터(`syn_index`)를 넣어 미리 펼쳐 저장하고, 검색용 `korean_search`는 동의어 없이 단순 매칭한다(쿼리 빠름 + synonym_graph clause 폭발 없음). 운영(llink-api)도 같은 이유로 색인 시점 방식(`name_search` 통합텍스트). **트레이드오프: 동의어 사전(`docker/opensearch/synonyms.txt`)을 바꾸면 전량 재색인(blue-green)이 필요**하다(검색 시점 방식이 아니므로 reload만으론 안 됨). 또 색인 시점 동의어는 synonym 토큰이 문서빈도를 늘려 `_score`(IDF)가 달라지는 부작용이 있다. 회사 부서가 동의어를 엑셀로 제공 → 변환 스크립트(`scripts/excel-to-synonyms.ts`)는 향후 작성 예정.
+5. **동의어는 "색인 시점에" 적용.** 색인용 분석기 `korean_index`에 `synonym` 필터(`syn_index`)를 넣어 미리 펼쳐 저장하고, 검색용 `korean_search`는 동의어 없이 단순 매칭한다(쿼리 빠름 + synonym_graph clause 폭발 없음). 운영(llink-api)도 같은 이유로 색인 시점 방식(`name_search` 통합텍스트). **트레이드오프: 동의어 사전(`docker/opensearch/synonyms.txt`)을 바꾸면 전량 재색인(blue-green)이 필요**하다(검색 시점 방식이 아니므로 reload만으론 안 됨). 또 색인 시점 동의어는 synonym 토큰이 문서빈도를 늘려 `_score`(IDF)가 달라지는 부작용이 있다. 회사 부서가 동의어를 Google Sheet(4탭: 남성/여성/키즈/라이프, lvl2~lvl6 카테고리별 동의어)로 제공 → 변환·검증 파이프라인 구현 완료(아래 **동의어 사전 파이프라인** 섹션 참고).
+
+## 동의어 사전 파이프라인 (생성 · 검증 · llink-api 적용 권고)
+
+회사 부서가 동의어를 **Google Sheet**로 제공한다(공유 링크 "보기 가능", 4탭: 남성/여성/키즈/라이프, 세로축=lvl2~lvl6 카테고리 경로, 가로축=레벨별 동의어 셀). 이를 받아 검증까지 하는 파이프라인:
+
+```
+[Google Sheet]  ──sheets-to-synonyms.mjs──▶  [synonyms.txt]  ──reindex-full──▶  [products 인덱스]
+  (CSV export,        (콤마셀=동의어그룹,         (bind 마운트,         (색인 시점 펼침)
+   무인증 fetch)        정규화 후 dedup)         이미지 재빌드 불필요)
+                                                      │
+                          check-synonyms.mjs ◀────────┤  (_analyze 도달성 점검)
+                          search-smoke.mjs   ◀────────┘  (골든셋 회귀)
+```
+
+**스크립트:**
+- `scripts/sheets-to-synonyms.mjs` — 시트 ID/gid는 상수. 레이아웃이 탭마다 다르므로(키즈 +1컬럼, 라이프 헤더없음) **"한 셀을 콤마로 쪼개 2개 이상이면 동의어 그룹"** 휴리스틱 사용(카테고리 셀은 슬래시라 안전). 같은 그룹이 행마다 반복돼 정규화 후 dedup. Solr 양방향 포맷 한 줄=한 그룹. **외부 의존성 0**(Node 내장 fetch + 자체 CSV 파서).
+- `scripts/check-synonyms.mjs` — 각 그룹의 **hub**(가장 많이 펼쳐지는 멤버)를 기준으로, `analyze(멤버, korean_search) ⊆ analyze(hub, korean_index)`이면 "도달 가능". 단일어/다중어 유실을 분리 집계. 대표어(첫 항목)는 nori에 분해돼 안 터지는 경우가 많아 hub 기준이 정확하다.
+- `scripts/search-smoke.mjs` + `golden-queries.json` — 골든셋으로 실제 API 검색. `expect`(소프트 경고)/`forbid`(하드 실패, exit 1).
+
+**오픈 전 권장 루프:** 사전 수정 → `sheets-to-synonyms.mjs` → `reindex-full.mjs 100`(소량) → `check-synonyms.mjs`(과소확장 점검) + `search-smoke.mjs`(과다확장 점검) → 통과 시 `reindex-full.mjs all`.
+
+**검증으로 드러난 두 가지 구조적 문제 (색인 시점 동의어 + nori 조합 고유, llink-api도 동일하게 점검 필요):**
+1. **과소 확장(사전에 적었는데 안 먹힘)** — 단일어 다수가 색인 토큰으로 라운드트립 실패. 원인: nori 형태소 분해(`아우터→터`, `가벼운→가볍`), 굴절형(`긴`이 `롱`과 안 묶임), 오타 변형(`자캣`, `처카`). 전체 사전 기준 단일어 유실 ~846개.
+2. **과다 확장(엉뚱한 게 잡힘)** — 거대 조합어 그룹들이 `자켓/패딩/다운` 같은 공통 토큰을 공유해 서로 연결 → `재킷` 검색에 `부츠`가 섞이는 식. 또 다중어 조합어(`롱 다운재킷`)는 토큰 분해돼 라운드트립도 안 됨(유실 ~868개).
+
+**llink-api 전환 설계서 (facet → category):** `docs/llink-api-category-synonym-migration.md` — 운영 레포의 현재 구조(검증된 파일·함수 위치) + 전환 작업 항목 + path→categoryCode 매칭 + 롤아웃 순서. llink-api 담당자 전달용.
+
+**llink-api 적용 시 권고:**
+- 운영도 색인 시점 통합텍스트(`name_search`) 방식이라 **위 두 문제가 그대로 재현**된다. 동의어 반영은 reload가 아니라 **전량 재색인 필요**.
+- 적용 전후로 `check-synonyms.mjs`/`search-smoke.mjs`에 해당하는 **회귀 도구를 운영 분석기로 돌려** 단일어 유실·과다확장을 수치로 확인할 것.
+- 과소확장 완화: nori에 안 잡히는 굴절형/오타는 양방향 대신 **`A => 표준형` 일방향 치환**으로 빼거나, 해당 항목만 검색 시점 동의어 병행 검토.
+- 과다확장 완화: 거대 조합어 그룹은 사전 생성 단계에서 **분리/제외 규칙** 추가(공통 토큰 공유로 인한 전이 매칭 차단).
 
 ## 색인 스크립트 규칙 (.mjs)
 
